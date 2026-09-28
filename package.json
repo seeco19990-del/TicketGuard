@@ -1,0 +1,19 @@
+{
+  "name": "ticketguard-hackathon-prototype",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "TicketGuard: AI-gated ticket escrow, refunds, and 20 percent donation settlement",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node test_cases.js --demo",
+    "test:kiln": "node test_cases.js --kiln"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.5",
+    "ganache": "^7.9.2",
+    "openai": "^4.86.2",
+    "solc": "^0.8.30"
+  }
+}
