@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TicketGuard - Modern Web3 Ticketing</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { 
+                extend: { 
+                    colors: { 
+                        bgBase: '#09090b',
+                        brand: { 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5' } 
+                    },
+                    boxShadow: {
+                        'neon': '0 0 20px rgba(99, 102, 241, 0.3)',
+                        'neon-rose': '0 0 20px rgba(225, 29, 72, 0.3)',
+                    }
+                } 
+            }
+        }
+    </script>
+    <style>
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        body { font-family: 'Pretendard', sans-serif; background-color: #09090b; color: #f4f4f5; }
+        
+        .glass-panel { 
+            background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
+            backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255,255,255,0.06); 
+            box-shadow: 0 8px 32px 0 rgba(0,0,0,0.3);
+        }
+        
+        .modern-input { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); transition: all 0.2s ease; }
+        .modern-input:focus { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2); outline: none; }
+        .fade-in { animation: fadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .mac-dots { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .dot-red { background-color: #ff5f56; } .dot-yellow { background-color: #ffbd2e; } .dot-green { background-color: #27c93f; }
+        
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-brand-500 selection:text-white relative overflow-x-hidden">
+
+    <div class="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+        <div class="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-indigo-600/10 rounded-full blur-[140px]"></div>
+        <div class="absolute bottom-[-20%] right-[-10%] w-[40%] h-[50%] bg-emerald-600/10 rounded-full blur-[140px]"></div>
+    </div>
+
+    <!-- ==================== [온보딩 뷰] ==================== -->
+    <div id="viewOnboarding" class="relative z-10 flex-1 flex items-center justify-center p-6">
+        <div class="glass-panel w-full max-w-md rounded-[2rem] p-10 shadow-2xl transition-all">
+            <div id="stepLogin" class="fade-in space-y-8 text-center">
+                <div class="relative w-20 h-20 mx-auto">
+                    <div class="absolute inset-0 bg-brand-500 blur-xl opacity-40 rounded-full"></div>
+                    <div class="relative bg-gradient-to-tr from-indigo-500 to-purple-500 w-full h-full rounded-2xl flex items-center justify-center text-4xl shadow-lg border border-white/20">🛡️</div>
+                </div>
+                <div><h2 class="text-3xl font-extrabold tracking-tight text-white">TicketGuard</h2><p class="text-sm text-zinc-400 mt-2">가장 안전한 Web3 티켓 마켓</p></div>
+                <div class="space-y-3 pt-4">
+                    <button onclick="nextStep('wallet')" class="w-full bg-[#FEE500] hover:bg-[#ebd300] text-black font-bold py-4 rounded-2xl transition-all hover:scale-[1.02]">카카오 계정으로 계속하기</button>
+                    <button onclick="nextStep('wallet')" class="w-full bg-white hover:bg-zinc-100 text-zinc-900 font-bold py-4 rounded-2xl transition-all hover:scale-[1.02]">Google 계정으로 계속하기</button>
+                </div>
+            </div>
+
+            <div id="stepWallet" class="hidden fade-in space-y-8 text-center py-6">
+                <div class="w-20 h-20 bg-zinc-800/50 rounded-full flex items-center justify-center text-4xl mx-auto border border-white/10 animate-pulse">👛</div>
+                <div><h2 class="text-xl font-bold text-white">Web3 지갑 생성 중</h2></div>
+                <div class="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden"><div id="walletProgress" class="h-full bg-brand-500 w-0 transition-all duration-[1500ms] ease-out"></div></div>
+            </div>
+
+            <div id="stepKyc" class="hidden fade-in space-y-8 py-4">
+                <div class="text-center"><span class="text-4xl">🏦</span><h2 class="text-xl font-bold text-white mt-4">계좌 실명 인증 (KYC)</h2></div>
+                <div class="space-y-5">
+                    <div><label class="block text-[11px] font-bold text-zinc-500 uppercase mb-2">예금주 성명</label><input type="text" value="김민성" class="w-full modern-input rounded-xl px-4 py-3.5 text-sm text-white"></div>
+                    <div><label class="block text-[11px] font-bold text-zinc-500 uppercase mb-2">계좌 번호</label><input type="text" value="카카오뱅크 3333-01-234567" class="w-full modern-input rounded-xl px-4 py-3.5 text-sm font-mono text-zinc-300"></div>
+                    <button onclick="finishOnboarding()" class="w-full bg-brand-600 hover:bg-brand-500 text-white font-bold py-4 rounded-2xl shadow-neon transition-all hover:scale-[1.02] mt-2">인증 완료 및 입장하기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== [메인 앱 뷰] ==================== -->
+    <div id="viewApp" class="hidden relative z-10 flex-col min-h-screen">
+        
+        <header class="glass-panel border-x-0 border-t-0 border-b border-white/5 sticky top-0 z-50">
+            <div class="max-w-[1400px] mx-auto px-6 py-4 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand-500 to-purple-500 flex items-center justify-center text-sm shadow-lg">🛡️</div>
+                    <span class="font-extrabold tracking-tight text-lg text-white">TicketGuard</span>
+                </div>
+                <nav class="flex space-x-1 bg-black/40 p-1.5 rounded-2xl border border-white/5 backdrop-blur-md">
+                    <button onclick="switchTab('seller')" id="tabSeller" class="px-5 py-2 rounded-xl text-xs font-bold bg-white/10 text-white shadow-sm transition-all">판매자 (등록/관리)</button>
+                    <button onclick="switchTab('market')" id="tabMarket" class="px-5 py-2 rounded-xl text-xs font-bold text-zinc-400 hover:text-white transition-all">에스크로 마켓</button>
+                    <button onclick="switchTab('buyer')" id="tabBuyer" class="px-5 py-2 rounded-xl text-xs font-bold text-zinc-400 hover:text-white transition-all">구매자 (보관함)</button>
+                </nav>
+                <div class="flex gap-3 items-center">
+                    <button onclick="triggerCancelEvent()" id="btnCancelEvent" disabled class="px-4 py-2 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-xl text-xs font-bold transition-all opacity-50 cursor-not-allowed flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-rose-500"></span> 주최측: 특정 행사 취소
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 max-w-[1400px] w-full mx-auto p-6 flex flex-col pt-8">
+            
+            <!-- ✅ [1. 판매자 탭] -->
+            <div id="contentSeller" class="fade-in space-y-6 flex-1">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    
+                    <div class="lg:col-span-4 space-y-6">
+                        <div class="glass-panel rounded-[2rem] p-8 relative overflow-hidden">
+                            <div class="flex justify-between items-center mb-8 relative z-10">
+                                <h2 class="text-sm font-bold text-zinc-300">나의 암호화폐 지갑</h2>
+                                <div class="flex gap-1.5" id="strikeIndicators">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-white/20" id="strike1"></div>
+                                    <div class="w-1.5 h-1.5 rounded-full bg-white/20" id="strike2"></div>
+                                    <div class="w-1.5 h-1.5 rounded-full bg-white/20" id="strike3"></div>
+                                </div>
+                            </div>
+                            <div class="mb-8 relative z-10">
+                                <span class="text-[11px] font-bold text-zinc-500 uppercase block mb-2">사용 가능 잔액 (보증금)</span>
+                                <span id="sellerBalance" class="text-3xl font-extrabold font-mono text-white tracking-tight">15,000,000 <span class="text-lg text-emerald-400 ml-1">mKRW</span></span>
+                            </div>
+                            
+                            <div class="relative z-10 border-t border-white/10 pt-6">
+                                <h3 class="text-[11px] font-bold text-brand-400 uppercase tracking-wider mb-4">현재 에스크로에 등록한 매물</h3>
+                                <div id="activeListings" class="space-y-3 max-h-60 overflow-y-auto pr-2">
+                                    <p class="text-xs text-zinc-500 text-center py-4 bg-white/5 rounded-xl">현재 등록한 매물이 없습니다.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-8">
+                        <div class="glass-panel rounded-[2rem] p-8 relative" id="sellerFormContainer">
+                            <div id="sellerForm">
+                                <div class="mb-8"><h2 class="text-xl font-bold text-white">새 티켓 리셀 등록</h2><p class="text-sm text-zinc-400 mt-1">올바른 정보를 입력하고 AI 상한선 검증을 통과해야 합니다.</p></div>
+
+                                <div class="space-y-6">
+                                    <div class="p-5 rounded-2xl bg-black/20 border border-white/5">
+                                        <label class="block text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-3">티켓 카테고리</label>
+                                        <select id="selCategory" onchange="updateDynamicFields()" class="w-full modern-input rounded-xl px-4 py-3 text-sm text-white">
+                                            <option value="CONCERT">🎤 콘서트 (기본상한 100만 원)</option>
+                                            <option value="MUSICAL">🎭 뮤지컬 (기본상한 30만 원)</option>
+                                            <option value="MOVIE">🎬 영화표 (기본상한 3만 원)</option>
+                                            <option value="SPORT">⚾ 스포츠 (기본상한 50만 원)</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="p-5 rounded-2xl bg-black/20 border border-white/5 space-y-5">
+                                        <div id="dynamicFields" class="grid grid-cols-2 gap-5">
+                                            <!-- 초기 콘서트 화면 -->
+                                            <div class="col-span-2">
+                                                <label class="block text-[11px] font-bold text-zinc-500 uppercase mb-2">누구의 콘서트인가요?</label>
+                                                <input type="text" id="inpArtist" placeholder="예: 아이유 2026 월드투어" class="w-full modern-input rounded-xl px-4 py-3 text-sm text-white">
+                                            </div>
+                                        </div>
+                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 border-t border-white/5 pt-5">
+                                            <div>
+                                                <label class="block text-[11px] font-bold text-emerald-400 uppercase mb-2">일시 (필수 입력) ⏰</label>
+                                                <input type="datetime-local" id="inpDate" class="w-full modern-input border-emerald-500/30 rounded-xl px-3 py-3 text-sm text-zinc-300">
+                                            </div>
+                                            <div>
+                                                <label class="block text-[11px] font-bold text-zinc-500 uppercase mb-2">상세 구역 및 열</label>
+                                                <input type="text" id="inpSeat" placeholder="예: VIP석 A구역 1열" class="w-full modern-input rounded-xl px-3 py-3 text-sm text-white">
+                                            </div>
+                                            <div>
+                                                <label class="block text-[11px] font-bold text-zinc-500 uppercase mb-2">연석 수</label>
+                                                <select class="w-full modern-input rounded-xl px-3 py-3 text-sm text-white">
+                                                    <option>1장 (단일)</option><option>2연석</option><option>3연석</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="relative p-6 rounded-2xl bg-gradient-to-br from-brand-900/20 to-bgBase border border-brand-500/30 overflow-hidden">
+                                        <div class="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div>
+                                                <label class="block text-[11px] font-bold text-brand-300 uppercase tracking-wider mb-2">티켓 원가 (Face Price)</label>
+                                                <input type="number" id="priceFace" placeholder="예: 120000" oninput="calculateDeposit()" class="w-full modern-input bg-black/40 border-brand-500/30 rounded-xl px-4 py-3 text-lg font-mono text-white text-right">
+                                                <p class="text-[10px] text-brand-400 mt-2">* 100만원 이상 VIP티켓은 최대 50% 마진 허용</p>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[11px] font-bold text-emerald-400 uppercase tracking-wider mb-2">판매 희망가 (Asking Price)</label>
+                                                <input type="number" id="priceAsk" placeholder="예: 150000" oninput="calculateDeposit()" class="w-full modern-input bg-black/40 border-emerald-500/30 rounded-xl px-4 py-3 text-lg font-mono text-emerald-300 text-right">
+                                            </div>
+                                        </div>
+                                        <div class="relative z-10 mt-6 pt-5 border-t border-brand-500/20 flex justify-between items-center bg-black/20 -mx-6 -mb-6 p-6 rounded-b-2xl">
+                                            <span class="text-xs text-zinc-300 font-bold flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-rose-500"></span> 20% 의무 보증금</span>
+                                            <span id="depositAmount" class="text-xl font-bold font-mono text-rose-400">0 <span class="text-xs text-rose-500 ml-1">mKRW</span></span>
+                                        </div>
+                                    </div>
+                                    <button onclick="submitTicket()" class="w-full mt-4 bg-white text-black hover:bg-zinc-200 font-extrabold py-4 rounded-2xl transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2">
+                                        보증금 예치 및 에스크로 마켓 등록 🚀
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ✅ [2. 에스크로 & 마켓 탭] -->
+            <div id="contentMarket" class="hidden fade-in space-y-6 flex-1">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 h-full">
+                    
+                    <div class="lg:col-span-4 glass-panel rounded-[2rem] p-8 flex flex-col relative border-brand-500/20 overflow-hidden">
+                        <div class="absolute top-0 right-0 w-64 h-64 bg-brand-500/5 rounded-full blur-[80px]"></div>
+                        <div class="text-center relative z-10 mb-8">
+                            <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-zinc-900 border border-white/10 text-2xl mb-4 shadow-lg">⛓️</div>
+                            <h2 class="text-lg font-bold text-white">스마트 에스크로 Vault</h2>
+                        </div>
+                        <div class="space-y-4 relative z-10 flex-1">
+                            <div class="bg-black/40 border border-white/5 rounded-2xl p-5 text-center">
+                                <span class="text-[10px] font-bold text-brand-400 uppercase block mb-2">총 예치된 보증금 락업</span>
+                                <span id="totalEscrowDeposit" class="text-2xl font-bold font-mono text-white">0</span>
+                            </div>
+                            <div class="bg-black/40 border border-white/5 rounded-2xl p-5 text-center">
+                                <span class="text-[10px] font-bold text-emerald-500 uppercase block mb-2">총 결제 완료 대금</span>
+                                <span id="totalEscrowBalance" class="text-2xl font-bold font-mono text-white">0</span>
+                            </div>
+                            <div class="bg-black/40 border border-white/5 rounded-2xl p-5 text-center">
+                                <span class="text-[10px] font-bold text-zinc-400 uppercase block mb-2">보관 중인 총 티켓 수</span>
+                                <span id="totalEscrowTickets" class="text-2xl font-bold font-mono text-white">0 장</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-8 glass-panel rounded-[2rem] p-8 flex flex-col">
+                        <h2 class="text-lg font-bold text-white mb-6 flex items-center gap-2"><span class="text-xl">🛒</span> 카테고리별 티켓 마켓</h2>
+                        <div id="marketListContainer" class="flex-1 space-y-8 overflow-y-auto pr-2">
+                            <div class="text-center py-20 opacity-50"><span class="text-4xl block mb-4 grayscale">🎫</span>현재 등록된 티켓이 없습니다.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ✅ [3. 구매자 탭] -->
+            <div id="contentBuyer" class="hidden fade-in space-y-6 flex-1">
+                <div class="glass-panel rounded-[2rem] p-8 h-full flex flex-col max-w-3xl mx-auto w-full">
+                    <div class="flex items-center gap-3 mb-8 pb-4 border-b border-white/5">
+                        <div class="w-10 h-10 bg-brand-500/20 rounded-xl flex items-center justify-center text-xl">🛍️</div>
+                        <h2 class="text-xl font-bold text-white">구매자 보관함 (내역)</h2>
+                    </div>
+
+                    <div class="bg-black/30 p-6 rounded-2xl border border-white/5 mb-8 flex justify-between items-center">
+                        <div>
+                            <span class="text-[11px] font-bold text-zinc-500 uppercase tracking-wider block mb-2">지갑 보유 잔액</span>
+                            <span id="buyerBalance" class="text-3xl font-bold font-mono text-white">30,000,000 <span class="text-lg text-emerald-400 ml-1">mKRW</span></span>
+                        </div>
+                    </div>
+                    
+                    <h3 class="text-sm font-bold text-zinc-300 mb-4 flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-brand-500"></span> 결제 완료 티켓 리스트</h3>
+                    <div id="buyerInventoryContainer" class="space-y-4 max-h-96 overflow-y-auto pr-2">
+                        <div class="text-sm text-zinc-600 bg-white/5 py-8 rounded-2xl text-center border border-white/5">아직 구매한 티켓이 없습니다.</div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+        <footer class="max-w-[1400px] w-full mx-auto px-6 pb-6">
+            <div class="bg-[#0f111a] border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
+                <div class="bg-black/40 px-4 py-2.5 flex justify-between items-center border-b border-white/5">
+                    <div class="flex items-center"><span class="mac-dots dot-red"></span><span class="mac-dots dot-yellow"></span><span class="mac-dots dot-green"></span></div>
+                    <span class="text-[10px] font-bold text-zinc-500 tracking-widest uppercase">Node.js Server Engine</span>
+                    <button onclick="document.getElementById('sysTerm').innerHTML=''" class="text-[10px] font-bold text-zinc-600 hover:text-white transition-colors">CLEAR</button>
+                </div>
+                <div id="sysTerm" class="h-28 p-4 overflow-y-auto font-mono text-[11px] text-zinc-400 leading-relaxed space-y-1.5">
+                    <p class="text-emerald-400"><span class="text-zinc-600 mr-2">~</span>[SYSTEM] Market logic updated with strict refund policies & Dynamic Placeholders.</p>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 비즈니스 로직 스크립트 -->
+    <script>
+        let tickets = []; 
+        let ticketIdCounter = 1;
+        let strikeCount = 0; 
+        let sellerBalanceAmount = 15000000; 
+        let buyerBalanceAmount = 30000000;
+
+        const catNames = { 'CONCERT': '🎤 콘서트', 'MUSICAL': '🎭 뮤지컬', 'MOVIE': '🎬 영화표', 'SPORT': '⚾ 스포츠' };
+
+        function logTerm(msg, type='info') {
+            const term = document.getElementById('sysTerm');
+            const color = type === 'success' ? 'text-emerald-400' : type === 'error' ? 'text-rose-400' : 'text-zinc-300';
+            const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+            term.innerHTML += `<p class="${color}"><span class="text-zinc-600 mr-2">[${time}]</span> ${msg}</p>`;
+            term.scrollTop = term.scrollHeight;
+        }
+
+        function nextStep(step) {
+            document.getElementById('stepLogin').classList.add('hidden');
+            document.getElementById('stepWallet').classList.remove('hidden');
+            setTimeout(() => { document.getElementById('walletProgress').style.width = '100%'; }, 50);
+            setTimeout(() => { document.getElementById('stepWallet').classList.add('hidden'); document.getElementById('stepKyc').classList.remove('hidden'); }, 1500);
+        }
+        function finishOnboarding() {
+            document.getElementById('viewOnboarding').classList.add('hidden'); document.getElementById('viewApp').classList.remove('hidden'); document.getElementById('viewApp').classList.add('flex');
+            renderAll();
+        }
+
+        function switchTab(tab) {
+            ['Seller', 'Market', 'Buyer'].forEach(t => {
+                document.getElementById(`content${t}`).classList.add('hidden');
+                document.getElementById(`tab${t}`).className = "px-5 py-2 rounded-xl text-xs font-bold text-zinc-400 hover:text-white transition-all";
+            });
+            const active = tab.charAt(0).toUpperCase() + tab.slice(1);
+            document.getElementById(`content${active}`).classList.remove('hidden');
+            document.getElementById(`tab${active}`).className = "px-5 py-2 rounded-xl text-xs font-bold bg-white/10 text-white shadow-sm transition-all";
+        }
+
+        // 카테고리별 동적 폼 및 예시(Placeholder) 변경 로직
+        function updateDynamicFields() {
+            const cat = document.getElementById('selCategory').value;
+            const container = document.getElementById('dynamicFields');
+            const seatInput = document.getElementById('inpSeat');
+            
+            let html = '';
+            if(cat === 'CONCERT') {
+                html = `<div class="col-span-2"><label class="block text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-2">누구의 콘서트인가요?</label><input type="text" id="inpArtist" placeholder="예: 아이유 2026 월드투어" class="w-full modern-input rounded-xl px-4 py-3 text-sm text-white"></div>`;
+                if(seatInput) seatInput.placeholder = "예: VIP석 A구역 1열";
+            }
+            else if(cat === 'MUSICAL') {
+                html = `<div class="col-span-2"><label class="block text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-2">뮤지컬 작품명</label><input type="text" id="inpArtist" placeholder="예: 오페라의 유령" class="w-full modern-input rounded-xl px-4 py-3 text-sm text-white"></div>`;
+                if(seatInput) seatInput.placeholder = "예: VIP석 1층 B구역";
+            }
+            else if(cat === 'MOVIE') {
+                html = `<div><label class="block text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-2">영화관/지점</label><input type="text" id="inpTheater" placeholder="예: CGV 용산아이파크몰" class="w-full modern-input rounded-xl px-4 py-3 text-sm text-white"></div>
+                        <div><label class="block text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-2">영화 제목</label><input type="text" id="inpArtist" placeholder="예: 인터스텔라" class="w-full modern-input rounded-xl px-4 py-3 text-sm text-white"></div>`;
+                if(seatInput) seatInput.placeholder = "예: IMAX관 G열 12번";
+            }
+            else if(cat === 'SPORT') {
+                html = `<div><label class="block text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-2">홈 경기 팀</label><input type="text" id="inpArtist" placeholder="예: LG 트윈스" class="w-full modern-input rounded-xl px-4 py-3 text-sm text-white"></div>
+                        <div><label class="block text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-2">원정 팀</label><input type="text" id="inpAway" placeholder="예: KIA 타이거즈" class="w-full modern-input rounded-xl px-4 py-3 text-sm text-white"></div>`;
+                if(seatInput) seatInput.placeholder = "예: 응원석 1열";
+            }
+            container.innerHTML = html;
+        }
+
+        function calculateDeposit() {
+            const ask = parseInt(document.getElementById('priceAsk').value) || 0;
+            document.getElementById('depositAmount').innerHTML = `${(ask * 0.2).toLocaleString()} <span class="text-xs text-rose-500 ml-1">mKRW</span>`;
+        }
+
+        // --- 1. 티켓 등록 및 폼 초기화 ---
+        function submitTicket() {
+            if(strikeCount >= 3) return Swal.fire({ icon:'error', title:'영구 차단', text:'사기 이력으로 더 이상 등록할 수 없습니다.', background:'#09090b', color:'#f4f4f5' });
+
+            const cat = document.getElementById('selCategory').value;
+            const faceText = document.getElementById('priceFace').value;
+            const askText = document.getElementById('priceAsk').value;
+            const dateInput = document.getElementById('inpDate').value;
+            const seatInput = document.getElementById('inpSeat').value;
+
+            // 필수 입력값 검증 (시간, 가격 누락 방지)
+            if (!dateInput || !faceText || !askText || !seatInput) {
+                return Swal.fire({ icon: 'error', title: '입력 누락 ⚠️', text: '일시(시간), 좌석, 가격 정보를 모두 필수로 입력해주세요.', background: '#09090b', color: '#f4f4f5' });
+            }
+
+            const face = parseInt(faceText);
+            const ask = parseInt(askText);
+            const deposit = ask * 0.2;
+
+            // 카테고리별 제목 조합
+            let titleInput = "";
+            if (cat === 'MOVIE') {
+                const theater = document.getElementById('inpTheater') ? document.getElementById('inpTheater').value : "";
+                const movieTitle = document.getElementById('inpArtist') ? document.getElementById('inpArtist').value : "";
+                titleInput = theater ? `[${theater}] ${movieTitle}` : movieTitle;
+            } else if (cat === 'SPORT') {
+                const home = document.getElementById('inpArtist') ? document.getElementById('inpArtist').value : "";
+                const away = document.getElementById('inpAway') ? document.getElementById('inpAway').value : "";
+                titleInput = away ? `${home} vs ${away}` : home;
+            } else {
+                titleInput = document.getElementById('inpArtist') ? document.getElementById('inpArtist').value : "";
+            }
+            if(!titleInput) titleInput = catNames[cat];
+
+            const displaySeat = `${dateInput.replace('T', ' ')} | ${seatInput}`;
+
+            let baseCap = 30000;
+            if(cat === 'CONCERT') baseCap = 1000000; if(cat === 'SPORT') baseCap = 500000; if(cat === 'MUSICAL') baseCap = 300000;
+            let maxAllowed = baseCap;
+            if(face >= 1000000) maxAllowed = face + (face * 0.5); 
+
+            if(ask > maxAllowed) {
+                logTerm(`[ERROR] AI 차단: 요구가(${ask}) > 한도(${maxAllowed})`, "error");
+                return Swal.fire({ 
+                    icon: 'error', 
+                    title: '가격 상한가 위반 🚨', 
+                    text: `티켓 가격이 허용된 상한가(${maxAllowed.toLocaleString()}원)를 위반하였습니다. 가격을 변경해주세요.`, 
+                    background: '#09090b', color: '#f4f4f5' 
+                });
+            }
+            if(sellerBalanceAmount < deposit) return Swal.fire({icon:'error', title:'잔액 부족', background: '#09090b', color: '#f4f4f5'});
+
+            logTerm(`[SUCCESS] 매물 등록 승인. 보증금 ${deposit.toLocaleString()} mKRW 예치.`, "success");
+            sellerBalanceAmount -= deposit;
+            
+            tickets.push({ id: ticketIdCounter++, cat: cat, title: titleInput, seat: displaySeat, face: face, ask: ask, deposit: deposit, status: 'LISTED' });
+
+            // 💡 폼 완전히 비우기 (초기화)
+            if(document.getElementById('inpArtist')) document.getElementById('inpArtist').value = '';
+            if(document.getElementById('inpAway')) document.getElementById('inpAway').value = '';
+            if(document.getElementById('inpTheater')) document.getElementById('inpTheater').value = '';
+            document.getElementById('inpSeat').value = '';
+            document.getElementById('inpDate').value = '';
+            document.getElementById('priceFace').value = '';
+            document.getElementById('priceAsk').value = '';
+            document.getElementById('depositAmount').innerHTML = `0 <span class="text-xs text-rose-500 ml-1">mKRW</span>`;
+
+            Swal.fire({ icon: 'success', title: '마켓 등록 완료', text: '보증금이 락업되고 매물이 에스크로 마켓에 노출됩니다.', background: '#09090b', color: '#f4f4f5', timer: 1500, showConfirmButton: false });
+            renderAll();
+        }
+
+        // --- 2. 등록 취소 ---
+        function cancelListing(id) {
+            const tk = tickets.find(t => t.id === id);
+            if(!tk || tk.status !== 'LISTED') return;
+
+            Swal.fire({ icon: 'question', title: '등록 취소', text: `'${tk.title}' 매물을 취소하고 보증금을 반환받으시겠습니까?`, background: '#09090b', color: '#f4f4f5', showCancelButton: true, confirmButtonColor: '#ef4444' }).then((res) => {
+                if(res.isConfirmed) {
+                    sellerBalanceAmount += tk.deposit;
+                    tickets = tickets.filter(t => t.id !== id);
+                    logTerm(`[SELLER] 매물 #${id} 취소. 보증금 ${tk.deposit.toLocaleString()} 회수.`, 'info');
+                    Swal.fire({icon: 'success', title: '취소 완료', background: '#09090b', color: '#f4f4f5', timer: 1000, showConfirmButton: false});
+                    renderAll();
+                }
+            });
+        }
+
+        // --- 3. 구매 (환불 불가 팝업) ---
+        function purchaseTicket(id) {
+            const tk = tickets.find(t => t.id === id);
+            if(!tk || tk.status !== 'LISTED') return;
+            if(buyerBalanceAmount < tk.ask) return Swal.fire({icon:'error', title:'잔액 부족', background: '#09090b', color: '#f4f4f5'});
+
+            Swal.fire({
+                icon: 'warning',
+                title: '에스크로 결제 진행',
+                text: '결제 이후에는 개인적인 사유로 인한 환불 및 취소가 절대 불가합니다. 동의하시겠습니까?',
+                background: '#09090b',
+                color: '#f4f4f5',
+                showCancelButton: true,
+                confirmButtonColor: '#10b981', // emerald
+                cancelButtonColor: '#3f3f46',
+                confirmButtonText: '네, 동의하고 결제합니다',
+                cancelButtonText: '취소'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    buyerBalanceAmount -= tk.ask;
+                    tk.status = 'SOLD';
+                    logTerm(`[BUYER] #${id} 결제 완료 (${tk.ask.toLocaleString()} mKRW). 환불 불가 동의함.`, "info");
+                    
+                    Swal.fire({ icon: 'success', title: '안전 결제 완료', text: '대금이 에스크로에 보관되었습니다.', background: '#09090b', color: '#f4f4f5', timer: 1500, showConfirmButton: false });
+                    renderAll();
+                }
+            });
+        }
+
+        // --- 4. 특정 주최측 취소 ---
+        function triggerCancelEvent() {
+            if (tickets.length === 0) {
+                return Swal.fire({ icon: 'info', title: '취소 불가', text: '현재 마켓에 등록되거나 판매된 행사가 없습니다.', background: '#09090b', color: '#f4f4f5' });
+            }
+
+            const inputOptions = {};
+            tickets.forEach(tk => {
+                const statusStr = tk.status === 'LISTED' ? '(판매대기)' : '(결제완료)';
+                inputOptions[tk.id] = `[${catNames[tk.cat]}] ${tk.title} ${statusStr}`;
+            });
+
+            Swal.fire({ 
+                icon: 'warning', 
+                title: '주최측 특정 행사 취소', 
+                text: '취소된 행사를 선택해주세요. 대금 및 보증금은 100% 자동 환불됩니다.', 
+                background: '#09090b', color: '#f4f4f5', 
+                input: 'select',
+                inputOptions: inputOptions,
+                inputPlaceholder: '취소할 행사를 선택하세요',
+                showCancelButton: true, 
+                confirmButtonColor: '#ef4444',
+                confirmButtonText: '선택 행사 환불 집행',
+                inputValidator: (value) => { if (!value) return '행사를 선택해야 합니다!' }
+            }).then((res) => {
+                if(res.isConfirmed) {
+                    const selectedId = parseInt(res.value);
+                    const tk = tickets.find(t => t.id === selectedId);
+                    
+                    if (tk) {
+                        logTerm(`[SYSTEM] 주최측 취소 발동: '${tk.title}' -> 전액 환불 집행`, "error");
+                        
+                        if(tk.status === 'LISTED') { 
+                            sellerBalanceAmount += tk.deposit; 
+                        } else if(tk.status === 'SOLD') { 
+                            sellerBalanceAmount += tk.deposit; 
+                            buyerBalanceAmount += tk.ask; 
+                        }
+                        
+                        tickets = tickets.filter(t => t.id !== selectedId);
+                        renderAll();
+                        Swal.fire({ icon: 'success', title: '특정 행사 환불 완료', text: `'${tk.title}' 관련 대금/보증금이 100% 환불 처리되었습니다.`, background: '#09090b', color: '#f4f4f5' });
+                    }
+                }
+            });
+        }
+
+        // --- 5. 사기 신고 ---
+        function reportFraud(id) {
+            const tk = tickets.find(t => t.id === id);
+            if(!tk || tk.status !== 'SOLD') return;
+
+            Swal.fire({ title: 'AI 분쟁 조정 중 🤖', background: '#09090b', color: '#f4f4f5', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); }});
+            setTimeout(() => {
+                strikeCount++; document.getElementById(`strike${strikeCount}`) && document.getElementById(`strike${strikeCount}`).classList.replace('bg-white/20', 'bg-rose-500');
+                buyerBalanceAmount += tk.ask; // 원금 환불
+                
+                logTerm(`[AI AGENT] #${id} 구매자 승소. 환불 완료.`, "error");
+                logTerm(`[PENALTY] 판매자 보증금 ${tk.deposit.toLocaleString()} mKRW 몰수! (경고 ${strikeCount}/3)`, "error");
+                
+                tickets = tickets.filter(t => t.id !== id);
+                renderAll();
+
+                if(strikeCount >= 3) {
+                    Swal.fire({ icon: 'error', title: '🚨 계정 영구 차단', background: '#09090b', color: '#f4f4f5' });
+                    const formContainer = document.getElementById('sellerFormContainer');
+                    if (formContainer) formContainer.innerHTML = "<div class='text-center text-rose-500 font-bold py-20 text-2xl'>🚨 영구 차단된 지갑입니다.</div>";
+                    logTerm(`[SYSTEM] 3-Strike Rule. 판매자 영구 차단.`, "error");
+                } else {
+                    Swal.fire({ icon: 'success', title: '전액 환불 완료', html: `AI 판독 결과 판매자 귀책이 인정되었습니다.<br><br><span class="text-rose-400">해당 판매자는 보증금이 몰수되었습니다.</span>`, background: '#09090b', color: '#f4f4f5' });
+                }
+            }, 2000);
+        }
+
+        // --- 화면 렌더링 ---
+        function renderAll() {
+            document.getElementById('sellerBalance').innerHTML = `${sellerBalanceAmount.toLocaleString()} <span class="text-lg text-emerald-400 ml-1">mKRW</span>`;
+            document.getElementById('buyerBalance').innerHTML = `${buyerBalanceAmount.toLocaleString()} <span class="text-lg text-emerald-400 ml-1">mKRW</span>`;
+
+            const btnCancelEvent = document.getElementById('btnCancelEvent');
+            if(tickets.length > 0) {
+                btnCancelEvent.disabled = false; btnCancelEvent.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                btnCancelEvent.disabled = true; btnCancelEvent.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+
+            const listedHTML = tickets.filter(t => t.status === 'LISTED').map(t => `
+                <div class="bg-black/30 border border-white/5 p-3 rounded-xl flex justify-between items-center group">
+                    <div>
+                        <span class="text-[10px] text-brand-400 font-bold border border-brand-500/30 px-1.5 rounded">${catNames[t.cat]}</span>
+                        <h4 class="text-xs font-bold text-white mt-1">${t.title}</h4>
+                        <p class="text-[10px] text-zinc-500">희망가: ${t.ask.toLocaleString()} KRW</p>
+                    </div>
+                    <button onclick="cancelListing(${t.id})" class="opacity-0 group-hover:opacity-100 px-3 py-1 bg-rose-500/20 text-rose-400 text-[10px] font-bold rounded-lg transition-all hover:bg-rose-500/40">등록 취소</button>
+                </div>
+            `).join('');
+            document.getElementById('activeListings').innerHTML = listedHTML || '<p class="text-xs text-zinc-500 text-center py-4 bg-white/5 rounded-xl">현재 등록한 매물이 없습니다.</p>';
+
+            let totDep = 0; let totBal = 0;
+            tickets.forEach(t => { if(t.status === 'LISTED') totDep += t.deposit; if(t.status === 'SOLD') { totDep += t.deposit; totBal += t.ask; }});
+            document.getElementById('totalEscrowDeposit').innerText = totDep.toLocaleString();
+            document.getElementById('totalEscrowBalance').innerText = totBal.toLocaleString();
+            document.getElementById('totalEscrowTickets').innerText = `${tickets.length} 장`;
+
+            const marketCont = document.getElementById('marketListContainer');
+            const availTickets = tickets.filter(t => t.status === 'LISTED');
+            if(availTickets.length === 0) {
+                marketCont.innerHTML = '<div class="text-center py-20 opacity-50"><span class="text-4xl block mb-4 grayscale">🎫</span>현재 등록된 티켓이 없습니다.</div>';
+            } else {
+                let mHtml = '';
+                for(let key in catNames) {
+                    const group = availTickets.filter(t => t.cat === key);
+                    if(group.length > 0) {
+                        mHtml += `<h3 class="text-sm font-bold text-brand-400 mb-3 mt-6 first:mt-0">${catNames[key]}</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4">`;
+                        group.forEach(t => {
+                            mHtml += `
+                            <div class="bg-black/30 border border-emerald-500/20 rounded-2xl p-5 hover:border-emerald-500/40 transition-colors flex flex-col justify-between">
+                                <div>
+                                    <span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">AI 가드라인 통과</span>
+                                    <h4 class="text-base font-bold text-white mt-2 mb-1">${t.title}</h4>
+                                    <p class="text-[11px] text-zinc-400 mb-4">${t.seat}</p>
+                                </div>
+                                <div>
+                                    <span class="block text-[10px] text-zinc-500 uppercase">에스크로 안전 결제가</span>
+                                    <div class="flex justify-between items-end mb-3">
+                                        <span class="text-xl text-white font-bold font-mono">${t.ask.toLocaleString()} <span class="text-xs text-zinc-400">KRW</span></span>
+                                    </div>
+                                    <button onclick="purchaseTicket(${t.id})" class="w-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-sm font-extrabold py-2.5 rounded-xl transition-all">결제하기</button>
+                                </div>
+                            </div>`;
+                        });
+                        mHtml += `</div>`;
+                    }
+                }
+                marketCont.innerHTML = mHtml;
+            }
+
+            const buyerCont = document.getElementById('buyerInventoryContainer');
+            const myTickets = tickets.filter(t => t.status === 'SOLD');
+            if(myTickets.length === 0) {
+                buyerCont.innerHTML = '<div class="text-sm text-zinc-600 bg-white/5 py-8 rounded-2xl text-center border border-white/5">아직 구매한 티켓이 없습니다.</div>';
+            } else {
+                buyerCont.innerHTML = myTickets.map(t => `
+                    <div class="bg-gradient-to-br from-emerald-900/20 to-bgBase border border-emerald-500/20 p-5 rounded-2xl relative mb-4">
+                        <span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold mb-2 inline-block">결제 및 락업 완료</span>
+                        <h4 class="text-base font-bold text-white">${t.title}</h4>
+                        <p class="text-[11px] text-zinc-400 mt-1">${t.seat} (결제액: ${t.ask.toLocaleString()} KRW)</p>
+                        <div class="mt-4 pt-4 border-t border-white/5">
+                            <button onclick="reportFraud(${t.id})" class="w-full bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white border border-rose-500/30 text-xs font-bold py-2.5 rounded-xl transition-all">
+                                ⚠️ 오프라인 입장 거부 (바코드 사기 신고)
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+    </script>
+</body>
+</html>

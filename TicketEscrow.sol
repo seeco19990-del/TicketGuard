@@ -123,9 +123,10 @@ contract TicketEscrow is IERC721Receiver {
         require(rawCategory <= uint8(Category.CONCERT) && eventId != bytes32(0), "BAD_TICKET");
         require(eventStatus[eventId] == EventStatus.ACTIVE, "EVENT_NOT_ACTIVE");
         require(facePriceKRW > 0 && askingPriceKRW > 0, "BAD_PRICE");
-        uint256 absoluteCap = rawCategory == uint8(Category.SPORT) ? 500_000 : 1_000_000;
-        require(askingPriceKRW <= absoluteCap, "ABSOLUTE_CAP");
-        require(askingPriceKRW <= facePriceKRW + facePriceKRW / 2, "MARKUP_CAP");
+       uint256 baseLimit = rawCategory == uint8(Category.SPORT) ? 500_000 : 1_000_000;
+        uint256 markupLimit = facePriceKRW + (facePriceKRW / 2); // 원가의 1.5배
+        uint256 allowedMax = markupLimit > baseLimit ? markupLimit : baseLimit; // 둘 중 더 큰 값(MAX) 선택
+        require(askingPriceKRW <= allowedMax, "EXCEEDS_DYNAMIC_PRICE_LIMIT");
 
         bytes32 structHash = keccak256(abi.encode(
             APPROVAL_TYPEHASH, address(ticket), tokenId, msg.sender, rawCategory,
