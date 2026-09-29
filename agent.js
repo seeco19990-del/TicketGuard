@@ -29,7 +29,6 @@ const verifiedWallets = new Set();
 const fulfilledBookings = new Set();
 const normalizeName = name => String(name).normalize('NFKC').replace(/\s+/g, '').toLocaleLowerCase('ko-KR');
 
-// Mock identity-provider and bank fixtures. The caller must NOT use this as real KYC.
 export function seedKycMock({ walletAddress, walletName, bankAccountId, bankName }) {
   walletNames.set(getAddress(walletAddress), String(walletName));
   bankNames.set(String(bankAccountId), String(bankName));
@@ -45,14 +44,13 @@ export async function verifyKycMock(walletAddress, bankAccountId) {
   return approved;
 }
 
-// Mock booking webhook: authorized organizer signer mints immediately after an accepted booking.
 export async function externalBookingSuccessMock({ provider, bookingRef, walletAddress, category, facePriceKRW, eventId, ticket, organizerSigner }) {
   if (!['INTERPARK', 'MELON_TICKET'].includes(provider)) throw new Error('UNSUPPORTED_BOOKING_PROVIDER');
   const key = `${provider}:${bookingRef}`;
   if (!bookingRef || fulfilledBookings.has(key)) throw new Error('DUPLICATE_OR_INVALID_BOOKING');
   const wallet = getAddress(walletAddress);
   if (!verifiedWallets.has(wallet)) throw new Error('KYC_REQUIRED');
-  fulfilledBookings.add(key); // Reserve before awaiting a transaction to prevent concurrent duplicate mints.
+  fulfilledBookings.add(key);
   try {
     const tx = await ticket.connect(organizerSigner).mint(wallet, category, facePriceKRW, eventId);
     const receipt = await tx.wait();
@@ -75,8 +73,10 @@ export function hardPriceGuard({ category, facePriceKRW, askingPriceKRW }) {
   }
   const cap = Number(category) === CATEGORY.SPORT ? 500_000 : 1_000_000;
   if (ask > cap) return { ok: false, reason: `ABSOLUTE_CAP: ${ask} KRW > ${cap} KRW` };
-  // Integer-safe equivalent of ask <= floor(face * 1.5).
-  if (BigInt(ask) > BigInt(face) + BigInt(face) / 2n) return { ok: false, reason: `MARKUP_CAP: ${ask} KRW > 150% of ${face} KRW` };
+  if (face > cap) {
+    const maxMarkup = BigInt(face) + BigInt(face) / 2n;
+    if (BigInt(ask) > maxMarkup) return { ok: false, reason: `MARKUP_CAP: ${ask} KRW > 150% of ${face} KRW` };
+  }
   return { ok: true, reason: 'Both price ceilings satisfied' };
 }
 
@@ -91,12 +91,11 @@ function simulateToolCall(listing) {
   };
 }
 
-// LLM output is advisory. Only APPROVE + deterministic checks produce an EIP-712 authorization.
 export async function evaluateTicketListing(listing, { approvalWallet, escrowAddress, chainId, demo = false, flow = 'LISTING' }) {
   let response;
   let modelDecision = 'REJECT';
   let modelReason = 'Missing or invalid function call';
- try {
+  try {
     if (demo) {
       response = simulateToolCall(listing);
     } else {
@@ -107,38 +106,38 @@ export async function evaluateTicketListing(listing, { approvalWallet, escrowAdd
         temperature: 0,
         max_tokens: 1024,
         messages: [
-          // 프롬프트 수정: tools를 쓰지 않고 JSON 텍스트만 출력하도록 강력하게 지시
-          { role: 'system', content: 'You are a ticket listing reviewer. A sports listing is at most 500000 KRW; a concert listing is at most 1000000 KRW. Every listing is at most 150% of immutable original face price. You MUST output ONLY valid JSON containing exactly two keys: "decision" ("APPROVE" or "REJECT") and "reason". Do not include any other text, explanation, or markdown formatting.' },
+          { 
+            role: 'system', 
+            content: 'You are an expert ticket listing reviewer. Rule: The Maximum Allowed Asking Price is calculated as MAX(Category Base Limit, Face Price * 1.5). Category Base Limits are 500,000 KRW for SPORT and 1,000,000 KRW for CONCERT. If the asking price is LESS THAN OR EQUAL TO this Maximum Allowed Asking Price, you MUST output decision as "APPROVE". If it exceeds, you MUST output decision as "REJECT" (NEVER use DISAPPROVE). Output ONLY valid JSON containing "decision" and "reason".' 
+          },
           { role: 'user', content: JSON.stringify({ category: Number(listing.category) === 0 ? 'SPORT' : 'CONCERT', facePriceKRW: listing.facePriceKRW, askingPriceKRW: listing.askingPriceKRW, tokenId: String(listing.tokenId) }) }
         ]
-        // 기존에 있던 tools와 tool_choice 옵션은 삭제합니다.
       });
     }
 
     const msg = response.choices?.[0]?.message;
-    
-    // AI가 응답을 content에 넣었는지, 레거시 환경 변수에 넣었는지 모두 추적
     let rawArgs = msg?.content || msg?.function_call?.arguments || msg?.tool_calls?.[0]?.function?.arguments || "";
     console.log("AI 원본 응답:", rawArgs);
 
-    // AI가 ```json { ... } ``` 형태로 마크다운을 붙여서 보냈을 경우를 대비해 텍스트 정제
     rawArgs = rawArgs.replace(/```json/gi, '').replace(/```/g, '').trim();
-
     if (!rawArgs) throw new Error('EMPTY_RESPONSE_FROM_MODEL');
 
     const args = JSON.parse(rawArgs); 
+    // DISAPPROVE 등 비정상적인 응답이 들어오면 무조건 REJECT로 정규화
+    if (args.decision === 'DISAPPROVE') args.decision = 'REJECT';
+
     if (!['APPROVE', 'REJECT'].includes(args.decision) || typeof args.reason !== 'string') {
         throw new Error('INVALID_TOOL_ARGUMENTS');
     }
     
     modelDecision = args.decision;
     modelReason = args.reason;
-  // 여기서부터는 기존 catch (err) { 블록이 이어집니다.
   } catch (err) {
     modelDecision = 'REJECT';
     const summary = err.status ? `HTTP_${err.status}${err.code ? `_${err.code}` : ''}` : (err.code || err.message);
     modelReason = `FAIL_CLOSED: ${String(summary).slice(0, 200)}`;
   }
+
   const tokens = response?.usage?.total_tokens ?? null;
   console.log(`[AI][${flow}] model=${MODEL} mode=${demo ? 'MOCK (not a Kiln call)' : 'KILN'} usage.total_tokens=${tokens ?? 'unavailable'} modelDecision=${modelDecision}`);
   const guard = hardPriceGuard(listing);
@@ -166,4 +165,44 @@ export async function evaluateTicketListing(listing, { approvalWallet, escrowAdd
   const signature = await approvalWallet.signTypedData(domain, types, value);
   console.log(`[AI][${flow}] APPROVE; signed bounded listing approval nonce=${listing.nonce}`);
   return { decision: 'APPROVE', modelDecision, reason, totalTokens: tokens, signature };
+}
+
+export async function evaluateDispute(claimText, { demo = false }) {
+  let modelDecision = 'SELLER_WINS';
+  let modelReason = 'Error';
+  let tokens = 0;
+
+  try {
+    if (demo) {
+      return { verdict: 'BUYER_WINS', reason: 'Mock: 사기가 감지되어 환불합니다.', tokens: 0 };
+    }
+    
+    const client = new OpenAI({ apiKey: process.env.KILN_API_KEY, baseURL: KILN_BASE_URL, timeout: 30_000, maxRetries: 0 });
+    const response = await client.chat.completions.create({
+      model: MODEL,
+      temperature: 0,
+      max_tokens: 1024,
+      messages: [
+        { 
+          role: 'system', 
+          content: 'You are a Dispute Resolution AI Agent for a smart contract ticketing platform. Analyze the buyer\'s claim. If the ticket is fake or duplicated, output JSON with "verdict": "BUYER_WINS" and "reason". Otherwise, output "verdict": "SELLER_WINS". You MUST output ONLY valid JSON.' 
+        },
+        { role: 'user', content: claimText }
+      ]
+    });
+
+    const msg = response.choices?.[0]?.message;
+    let rawArgs = msg?.content || "";
+    rawArgs = rawArgs.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+    const args = JSON.parse(rawArgs);
+    modelDecision = args.verdict;
+    modelReason = args.reason;
+    tokens = response.usage?.total_tokens ?? 0;
+  } catch (err) {
+    modelReason = `FAIL_CLOSED: ${err.message}`;
+  }
+
+  console.log(`[AI Dispute Agent] verdict=${modelDecision} | reason=${modelReason}`);
+  return { verdict: modelDecision, reason: modelReason, tokens };
 }
